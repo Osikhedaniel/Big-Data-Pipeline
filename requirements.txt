@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+faker
+kafka-python
+requests
+pydantic
