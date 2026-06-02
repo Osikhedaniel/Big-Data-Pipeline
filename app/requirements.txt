@@ -4,4 +4,3 @@ faker
 kafka-python
 requests
 pydantic
-pyspark

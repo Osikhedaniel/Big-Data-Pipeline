@@ -1,0 +1,36 @@
+from kafka import KafkaProducer
+import requests
+import json
+import time
+
+KAFKA_TOPIC = "gps_updates"
+KAFKA_SERVER = "localhost:9092"
+
+producer = KafkaProducer(
+    bootstrap_servers=KAFKA_SERVER,
+    value_serializer=lambda v: json.dumps(v).encode("utf-8")
+)
+
+API_URL = "http://127.0.0.1:8000/gps"
+
+
+def stream_data():
+    while True:
+        try:
+            response = requests.get(API_URL)
+
+            if response.status_code == 200:
+                data = response.json()
+
+                producer.send(KAFKA_TOPIC, value=data)
+
+                print(f"Sent: {data}")
+
+            time.sleep(2)
+
+        except Exception as e:
+            print(f"Error: {e}")
+
+
+if __name__ == "__main__":
+    stream_data()
