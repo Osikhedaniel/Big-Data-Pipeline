@@ -1,21 +1,17 @@
-version: '3.8'
-
-networks:
-  kafka-network:
-    driver: bridge
+version: '3'
 
 services:
   zookeeper:
     image: confluentinc/cp-zookeeper:7.3.0
-    container_name: zookeeper
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
-    networks:
-      - kafka-network
+    ports:
+      - "2181:2181"
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
 
   kafka:
     image: confluentinc/cp-kafka:7.3.0
-    container_name: kafka
     depends_on:
       - zookeeper
     ports:
@@ -23,41 +19,20 @@ services:
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      # 1. Add HOST to the protocol map
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
-      # 2. Define the listeners: one for Docker (PLAINTEXT) and one for your Host (PLAINTEXT_HOST)
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_HOST://0.0.0.0:29092
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-    networks:
-      - kafka-network
-
-  spark:
-    image: apache/spark:3.5.6
-    container_name: spark
-    depends_on:
-      - kafka
-    ports:
-      - "4040:4040"
-      - "8080:8080"
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      # Keep data longer (24 hours)
+      KAFKA_LOG_RETENTION_MS: 86400000
+      KAFKA_LOG_RETENTION_BYTES: 1073741824
+      KAFKA_LOG_SEGMENT_BYTES: 1073741824
+      KAFKA_DELETE_TOPIC_ENABLE: "true"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
     volumes:
-      - ./app:/app
-    working_dir: /app
-    tty: true
-    command: tail -f /dev/null
-    networks:
-      - kafka-network
+      - kafka_data:/var/lib/kafka/data
 
-  pipeline:
-    image: apache/spark:3.5.6
-    container_name: pipeline
-    working_dir: /app
-    volumes:
-      - ./app:/app
-    depends_on:
-      - kafka
-      - spark
-    tty: true
-    command: tail -f /dev/null
-    networks:
-      - kafka-network
+volumes:
+  zookeeper_data:
+  kafka_data:
