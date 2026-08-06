@@ -1,3 +1,7 @@
+import json
+from datetime import datetime
+from pathlib import Path
+
 from pyspark.sql import DataFrame
 from pyspark.sql.functions import (
     col,
@@ -15,7 +19,6 @@ from pyspark.sql.functions import (
     mean,
     percentile_approx
 )
-from pyspark.sql import DataFrame
 from pyspark.sql.types import DoubleType
 
 
@@ -214,3 +217,51 @@ def calculate_safety_metrics(df: DataFrame):
             when(col("speed") > 100, col("vehicle_id"))
         ).alias("vehicles_exceeding_100kmh")
     )
+
+
+def _spark_df_to_json_records(spark_df: DataFrame) -> list:
+    try:
+        pandas_df = spark_df.toPandas()
+        if pandas_df.empty:
+            return []
+        return json.loads(pandas_df.to_json(orient="records", date_format="iso"))
+    except Exception:
+        return []
+
+
+def build_metrics_report(df: DataFrame) -> dict:
+    report = {
+        "last_updated": datetime.utcnow().isoformat() + "Z",
+        "summary": {},
+        "status_breakdown": [],
+        "delay_metrics": [],
+        "vehicle_performance": [],
+        "status_transitions": [],
+        "spatial_metrics": {},
+        "time_based_metrics": [],
+        "safety_metrics": {}
+    }
+
+    if df is None:
+        return report
+
+    report["summary"] = (_spark_df_to_json_records(calculate_summary_metrics(df)) or [{}])[0]
+    report["status_breakdown"] = _spark_df_to_json_records(calculate_status_breakdown(df))
+    report["delay_metrics"] = _spark_df_to_json_records(calculate_delay_metrics(df))
+    report["vehicle_performance"] = _spark_df_to_json_records(calculate_vehicle_performance(df))
+    report["status_transitions"] = _spark_df_to_json_records(calculate_status_transitions(df))
+    report["spatial_metrics"] = (_spark_df_to_json_records(calculate_spatial_metrics(df)) or [{}])[0]
+    report["time_based_metrics"] = _spark_df_to_json_records(calculate_time_based_metrics(df))
+    report["safety_metrics"] = (_spark_df_to_json_records(calculate_safety_metrics(df)) or [{}])[0]
+
+    print(report)
+
+    return report
+
+
+def save_metrics_report_to_json(report: dict, filename: str = "metrics_report.json") -> Path:
+    path = Path(filename)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as f:
+        json.dump(report, f, indent=2, default=str)
+    return path

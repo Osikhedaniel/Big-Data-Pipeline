@@ -11,7 +11,7 @@ from transform import (
     remove_invalid_speed
 )
 
-from metrics import estimate_eta
+from metrics import estimate_eta, build_metrics_report, save_metrics_report_to_json
 
 from stream import (
     write_to_console,
@@ -93,7 +93,7 @@ def build_pipeline():
         gps_df = remove_invalid_speed(gps_df)
         gps_df = add_delay_flag(gps_df)
         gps_df = estimate_eta(gps_df)
-        
+
         # Metric_type field for the dashboard to identify data type
         gps_df = gps_df.withColumn("data_type", lit("gps_update"))
 
@@ -110,9 +110,39 @@ def build_pipeline():
         spark.stop()
         return
 
+    def write_metrics_batch(batch_df, batch_id):
+        try:
+            if batch_df.rdd.isEmpty():
+                logger.info(f"Batch {batch_id}: no rows to generate metrics report")
+                return
+
+            report = build_metrics_report(batch_df)
+            report_path = save_metrics_report_to_json(
+                report,
+                filename=f"metrics_reports/metrics_report_{batch_id}.json"
+            )
+            logger.info(f"Batch {batch_id}: metrics report saved to {report_path}")
+        except Exception as e:
+            logger.error(f"Batch {batch_id}: failed to generate metrics report - {e}")
+
     # Starting all sinks
     queries = []
     
+    # Metrics report sink
+    try:
+        logger.info("Starting Metrics report sink...")
+        metrics_query = (
+            gps_df.writeStream
+            .foreachBatch(write_metrics_batch)
+            .outputMode("append")
+            .option("checkpointLocation", "/tmp/checkpoints/metrics_report")
+            .start()
+        )
+        queries.append(metrics_query)
+        logger.info("Metrics report sink started successfully")
+    except Exception as e:
+        logger.error(f"Failed to start Metrics report sink: {e}")
+
     # Postgres
     try:
         logger.info("Starting PostgreSQL sink...")
